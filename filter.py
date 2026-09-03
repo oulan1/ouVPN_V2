@@ -1,9 +1,8 @@
+import asyncio
 import base64
 from datetime import datetime, timezone, timedelta
-import json
-import os
 import re
-import subprocess
+import socket
 import time
 import urllib.parse
 import urllib.request
@@ -44,7 +43,7 @@ def detect_country(text: str):
         for p in patterns:
             if re.search(p, t):
                 return code, flag
-    return "EU", "🌐"
+    return "EU", "⚡"
 
 def parse_vless(url: str):
     try:
@@ -54,10 +53,15 @@ def parse_vless(url: str):
         if not uuid or not host or not port:
             return None
         params = dict(urllib.parse.parse_qsl(p.query))
+        
         pbk = params.get("pbk")
-        sni = params.get("sni") or params.get("peer")
-        if not pbk or not sni:
+        security = params.get("security", "").lower()
+        if not pbk and security != "reality":
             return None
+            
+        if params.get("headerType") == "http":
+            return None
+
         return {
             "uuid": uuid,
             "host": host,
@@ -69,88 +73,19 @@ def parse_vless(url: str):
     except Exception:
         return None
 
-def test_proxy_get(node: dict, local_port: int = 10808) -> int:
-    sni = node["params"].get("sni") or node["params"].get("peer")
-    pbk = node["params"].get("pbk", "")
-    sid = node["params"].get("sid", "")
-    flow = node["params"].get("flow", "")
-
-    # Корректный конфиг под sing-box 1.9+
-    tls_block = {
-        "enabled": True,
-        "server_name": sni,
-        "reality": {
-            "enabled": True,
-            "public_key": pbk,
-            "short_id": sid
-        }
-    }
-    
-    outbound = {
-        "type": "vless",
-        "tag": "proxy",
-        "server": node["host"],
-        "server_port": node["port"],
-        "uuid": node["uuid"],
-        "tls": tls_block
-    }
-    
-    # flow прописывается только если он не пустой
-    if flow:
-        outbound["flow"] = flow
-
-    sb_config = {
-        "log": {"level": "panic"},
-        "inbounds": [{
-            "type": "mixed",
-            "tag": "mixed-in",
-            "listen": "127.0.0.1",
-            "listen_port": local_port
-        }],
-        "outbounds": [outbound]
-    }
-
-    config_path = f"temp_{local_port}.json"
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(sb_config, f)
-
-    proc = subprocess.Popen(
-        ["sing-box", "run", "-c", config_path],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
-    time.sleep(0.4)
-
+async def check_tcp_ping(host: str, port: int, timeout: float = 1.5):
+    loop = asyncio.get_running_loop()
     start = time.perf_counter()
-    ping_ms = None
-
     try:
-        # Проверка через системный curl по HTTP-порту (inbound type: mixed)
-        cmd = [
-            "curl", "-s", "-o", "/dev/null",
-            "-w", "%{http_code}",
-            "--connect-timeout", "2",
-            "-m", "3",
-            "-x", f"http://127.0.0.1:{local_port}",
-            "http://cp.cloudflare.com/generate_204"
-        ]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=3.5)
-        if res.stdout.strip() in ("204", "200"):
-            ping_ms = int((time.perf_counter() - start) * 1000)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setblocking(False)
+        await asyncio.wait_for(loop.sock_connect(sock, (host, port)), timeout=timeout)
+        sock.close()
+        return (time.perf_counter() - start) * 1000  # ms
     except Exception:
-        ping_ms = None
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=0.2)
-        except Exception:
-            proc.kill()
-        if os.path.exists(config_path):
-            os.remove(config_path)
+        return None
 
-    return ping_ms
-
-def main():
+async def main():
     collected_urls = []
     for url in SOURCES:
         try:
@@ -158,7 +93,7 @@ def main():
                 url, 
                 headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
             )
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urllib.request.urlopen(req, timeout=8) as resp:
                 content = resp.read().decode("utf-8", errors="ignore")
                 collected_urls.extend(decode_data(content))
         except Exception:
@@ -166,7 +101,6 @@ def main():
 
     parsed_nodes = []
     seen = set()
-
     for raw_url in collected_urls:
         node = parse_vless(raw_url)
         if node:
@@ -175,48 +109,74 @@ def main():
                 seen.add(key)
                 parsed_nodes.append(node)
 
-    print(f"Загружено {len(parsed_nodes)} Reality нод. Тестируем трафик...")
+    # Параллельный замер пинга
+    test_pool = parsed_nodes[:300]
+    tasks = [check_tcp_ping(n["host"], n["port"]) for n in test_pool]
+    pings = await asyncio.gather(*tasks)
 
     alive_nodes = []
-    country_counts = {}
-
-    for i, node in enumerate(parsed_nodes[:150]):
-        c_code, flag = detect_country(node["name"] + " " + node["host"])
-        
-        # Не больше 4 серверов на страну для разнообразия
-        if country_counts.get(c_code, 0) >= 4:
-            continue
-
-        port_to_use = 10800 + (i % 20)
-        ping = test_proxy_get(node, local_port=port_to_use)
-        
+    for node, ping in zip(test_pool, pings):
         if ping is not None:
             node["ping"] = ping
+            c_code, flag = detect_country(node["name"] + " " + node["host"])
             node["code"] = c_code
             node["flag"] = flag
-            country_counts[c_code] = country_counts.get(c_code, 0) + 1
             alive_nodes.append(node)
-            print(f"[OK] {c_code} {node['host']} - {ping}ms")
 
-        if len(alive_nodes) >= 20:
-            break
-
-    # Сортировка по реальному отклику
+    # Сортировка от минимального пинга
     alive_nodes.sort(key=lambda x: x["ping"])
+
+    TARGET_COUNT = 25
+    MAX_PER_COUNTRY = 4
+    selected_nodes = []
+    country_counts = {}
+
+    # Пошаговая лесенка по 10 мс: 20ms -> 30ms -> 40ms -> ... -> 300ms
+    current_limit = 20
+    max_threshold = 500
+
+    while current_limit <= max_threshold and len(selected_nodes) < TARGET_COUNT:
+        for node in alive_nodes:
+            if node in selected_nodes:
+                continue
+            
+            # Попадает ли узел в текущий порог
+            if node["ping"] <= current_limit:
+                c = node["code"]
+                if country_counts.get(c, 0) < MAX_PER_COUNTRY:
+                    country_counts[c] = country_counts.get(c, 0) + 1
+                    selected_nodes.append(node)
+
+            if len(selected_nodes) >= TARGET_COUNT:
+                break
+
+        current_limit += 10
+
+    # Если даже после 500 мс не набралось 25, добираем любые живые оставшиеся
+    if len(selected_nodes) < TARGET_COUNT:
+        for node in alive_nodes:
+            if node not in selected_nodes:
+                selected_nodes.append(node)
+            if len(selected_nodes) >= TARGET_COUNT:
+                break
+
+    # Итоговая сортировка отобранных серверов
+    selected_nodes.sort(key=lambda x: x["ping"])
 
     final_links = []
     node_counters = {}
-    for node in alive_nodes:
+    for node in selected_nodes:
         c = node["code"]
         flag = node["flag"]
         idx = node_counters.get(c, 0) + 1
         node_counters[c] = idx
 
-        new_title = f"{c} {flag} ouVPN #{idx} ({node['ping']}ms)"
+        new_title = f"{c} {flag} ouVPN #{idx} ({int(node['ping'])}ms)"
         encoded_title = urllib.parse.quote(new_title)
         query_str = urllib.parse.urlencode(node["params"])
         final_links.append(f"vless://{node['uuid']}@{node['host']}:{node['port']}?{query_str}#{encoded_title}")
 
+    # Москва UTC+3
     msk_tz = timezone(timedelta(hours=3))
     now_msk = datetime.now(msk_tz)
     date_formatted = now_msk.strftime("%Y-%m-%d / %H:%M (Moscow)")
@@ -237,4 +197,4 @@ def main():
         f.write("\n".join(header) + "\n" + "\n".join(final_links))
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
