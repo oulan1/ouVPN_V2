@@ -8,7 +8,6 @@ import time
 import urllib.parse
 import urllib.request
 
-# СТРОГО ТВОИ 5 ИСТОЧНИКОВ
 SOURCES = [
     "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS.txt",
     "https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/refs/heads/main/githubmirror/1.txt",
@@ -71,36 +70,44 @@ def parse_vless(url: str):
         return None
 
 def test_proxy_get(node: dict, local_port: int = 10808) -> int:
-    """Тестирует реальный выход в интернет через sing-box (Proxy GET до Google)"""
     sni = node["params"].get("sni") or node["params"].get("peer")
     pbk = node["params"].get("pbk", "")
     sid = node["params"].get("sid", "")
     flow = node["params"].get("flow", "")
 
+    # Корректный конфиг под sing-box 1.9+
+    tls_block = {
+        "enabled": True,
+        "server_name": sni,
+        "reality": {
+            "enabled": True,
+            "public_key": pbk,
+            "short_id": sid
+        }
+    }
+    
+    outbound = {
+        "type": "vless",
+        "tag": "proxy",
+        "server": node["host"],
+        "server_port": node["port"],
+        "uuid": node["uuid"],
+        "tls": tls_block
+    }
+    
+    # flow прописывается только если он не пустой
+    if flow:
+        outbound["flow"] = flow
+
     sb_config = {
+        "log": {"level": "panic"},
         "inbounds": [{
-            "type": "socks",
-            "tag": "socks-in",
+            "type": "mixed",
+            "tag": "mixed-in",
             "listen": "127.0.0.1",
             "listen_port": local_port
         }],
-        "outbounds": [{
-            "type": "vless",
-            "tag": "proxy",
-            "server": node["host"],
-            "server_port": node["port"],
-            "uuid": node["uuid"],
-            "flow": flow,
-            "tls": {
-                "enabled": True,
-                "server_name": sni,
-                "reality": {
-                    "enabled": True,
-                    "public_key": pbk,
-                    "short_id": sid
-                }
-            }
-        }]
+        "outbounds": [outbound]
     }
 
     config_path = f"temp_{local_port}.json"
@@ -112,29 +119,32 @@ def test_proxy_get(node: dict, local_port: int = 10808) -> int:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL
     )
-    time.sleep(0.5)
+    time.sleep(0.4)
 
     start = time.perf_counter()
     ping_ms = None
 
     try:
-        proxy_support = urllib.request.ProxyHandler({
-            "http": f"socks5h://127.0.0.1:{local_port}",
-            "https": f"socks5h://127.0.0.1:{local_port}"
-        })
-        opener = urllib.request.build_opener(proxy_support)
-        req = urllib.request.Request(
-            "https://www.gstatic.com/generate_204",
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
-        with opener.open(req, timeout=2.5) as resp:
-            if resp.status in (200, 204):
-                ping_ms = int((time.perf_counter() - start) * 1000)
+        # Проверка через системный curl по HTTP-порту (inbound type: mixed)
+        cmd = [
+            "curl", "-s", "-o", "/dev/null",
+            "-w", "%{http_code}",
+            "--connect-timeout", "2",
+            "-m", "3",
+            "-x", f"http://127.0.0.1:{local_port}",
+            "http://cp.cloudflare.com/generate_204"
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=3.5)
+        if res.stdout.strip() in ("204", "200"):
+            ping_ms = int((time.perf_counter() - start) * 1000)
     except Exception:
         ping_ms = None
     finally:
         proc.terminate()
-        proc.kill()
+        try:
+            proc.wait(timeout=0.2)
+        except Exception:
+            proc.kill()
         if os.path.exists(config_path):
             os.remove(config_path)
 
@@ -165,21 +175,22 @@ def main():
                 seen.add(key)
                 parsed_nodes.append(node)
 
-    print(f"Собрано {len(parsed_nodes)} уникальных Reality нод. Тестируем реальный трафик...")
+    print(f"Загружено {len(parsed_nodes)} Reality нод. Тестируем трафик...")
 
     alive_nodes = []
     country_counts = {}
 
-    # Проверяем кандидатов реальным Proxy GET запросом
-    for i, node in enumerate(parsed_nodes[:120]):
+    for i, node in enumerate(parsed_nodes[:150]):
         c_code, flag = detect_country(node["name"] + " " + node["host"])
         
-        # Не больше 4 серверов на одну страну
+        # Не больше 4 серверов на страну для разнообразия
         if country_counts.get(c_code, 0) >= 4:
             continue
 
-        ping = test_proxy_get(node, local_port=10808 + (i % 10))
-        if ping is not None and ping < 3000:
+        port_to_use = 10800 + (i % 20)
+        ping = test_proxy_get(node, local_port=port_to_use)
+        
+        if ping is not None:
             node["ping"] = ping
             node["code"] = c_code
             node["flag"] = flag
@@ -190,7 +201,7 @@ def main():
         if len(alive_nodes) >= 20:
             break
 
-    # Сортируем по реальной скорости
+    # Сортировка по реальному отклику
     alive_nodes.sort(key=lambda x: x["ping"])
 
     final_links = []
