@@ -2,20 +2,20 @@ name: Update ouVPN Subscription
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # Автозапуск раз в 4 часа
-  workflow_dispatch:      # Ручной запуск в интерфейсе
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 2    # Жесткий тайм-аут (вырубит задачу, если превысит 2 минуты)
+    timeout-minutes: 2
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: setup-python@v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
