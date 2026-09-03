@@ -3,29 +3,35 @@ import base64
 from datetime import datetime, timezone, timedelta
 import re
 import socket
+import ssl
 import time
 import urllib.parse
 import urllib.request
 
-# Проверенные стабильные источники с кучей европейских нод
+# Расширенные проверенные источники (с упором на Reality и свежие VLESS)
 SOURCES = [
-    "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS.txt",
-    "https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/refs/heads/main/githubmirror/1.txt",
-    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/refs/heads/main/configs/1.1.txt",
-    "https://raw.githubusercontent.com/pog7x/vpn-configs/refs/heads/master/githubmirror/1.txt",
-    "https://raw.githubusercontent.com/FLAT447/v2ray-lists/refs/heads/main/BLACK_FULL.txt"
+    "https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/sub/base64/vless",
+    "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub1.txt",
+    "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub2.txt",
+    "https://raw.githubusercontent.com/ndsphon/v2ray-collector/main/vless.txt",
+    "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt",
+    "https://raw.githubusercontent.com/freefq/free/master/v2"
 ]
 
-# Список флагов и кодов стран Европы
+# Европа: флаги и коды стран
 EU_FLAGS = {
-    "🇩🇪": "DE", "🇳🇱": "NL", "🇫🇮": "FI", "🇸🇪": "SE", "🇵🇱": "PL",
-    "🇫🇷": "FR", "🇬🇧": "GB", "🇦🇹": "AT", "🇨🇭": "CH", "🇨🇿": "CZ",
-    "🇳🇴": "NO", "🇪🇪": "EE", "🇱🇻": "LV", "🇱🇹": "LT", "🇮🇹": "IT",
-    "🇪🇸": "ES", "🇮🇸": "IS", "🇮🇪": "IE", "🇩🇰": "DK", "🇧🇪": "BE"
+    "NL": "🇳🇱", "DE": "🇩🇪", "FI": "🇫🇮", "SE": "🇸🇪", "FR": "🇫🇷",
+    "PL": "🇵🇱", "GB": "🇬🇧", "AT": "🇦🇹", "CH": "🇨🇭", "CZ": "🇨🇿",
+    "NO": "🇳🇴", "EE": "🇪🇪", "LV": "🇱🇻", "LT": "🇱🇹", "IT": "🇮🇹",
+    "ES": "🇪🇸", "IS": "🇮🇸", "IE": "🇮🇪", "DK": "🇩🇰", "BE": "🇧🇪"
 }
 
-# Регулярка для быстрого поиска флага или буквенного кода страны в названии
-COUNTRY_REGEX = re.compile(r"(🇩🇪|🇳🇱|🇫🇮|🇸🇪|🇵🇱|🇫🇷|🇬🇧|🇦🇹|🇨🇭|🇨🇿|🇳🇴|🇪🇪|🇱🇻|🇱🇹|🇮🇹|🇪🇸|🇮🇸|🇮🇪|🇩🇰|🇧🇪|\b(DE|NL|FI|SE|PL|FR|GB|AT|CH|CZ|NO|EE|LV|LT|IT|ES|IS|IE|DK|BE)\b)", re.IGNORECASE)
+# Регулярка для извлечения кода страны или эмодзи флага из имени
+FLAG_TO_CODE = {v: k for k, v in EU_FLAGS.items()}
+COUNTRY_REGEX = re.compile(
+    r"(🇳🇱|🇩🇪|🇫🇮|🇸🇪|🇫🇷|🇵🇱|🇬🇧|🇦🇹|🇨🇭|🇨🇿|🇳🇴|🇪🇪|🇱🇻|🇱🇹|🇮🇹|🇪🇸|🇮🇸|🇮🇪|🇩🇰|🇧🇪|\b(NL|DE|FI|SE|FR|PL|GB|AT|CH|CZ|NO|EE|LV|LT|IT|ES|IS|IE|DK|BE)\b)",
+    re.IGNORECASE
+)
 
 def decode_sub(content: str) -> list[str]:
     lines = []
@@ -43,44 +49,69 @@ def parse_vless(url: str):
         host, port = parsed.hostname, parsed.port
         if not uuid or not host or not port:
             return None
+            
         params = dict(urllib.parse.parse_qsl(parsed.query))
+        security = params.get("security", "").lower()
+
+        # Отсекаем заведомо нерабочие связки с фейковыми заголовками
+        if params.get("headerType") == "http":
+            return None
+
         raw_name = urllib.parse.unquote(parsed.fragment)
         return {
-            "uuid": uuid, 
-            "host": host, 
-            "port": port, 
-            "params": params, 
-            "name": raw_name
+            "uuid": uuid,
+            "host": host,
+            "port": port,
+            "params": params,
+            "security": security,
+            "name": raw_name,
+            "raw": url
         }
     except Exception:
         return None
 
-async def check_tcp_ping(host: str, port: int, timeout: float = 1.5):
+def extract_country(name: str):
+    match = COUNTRY_REGEX.search(name)
+    if not match:
+        return None, None
+    val = match.group(0)
+    if val in FLAG_TO_CODE:
+        code = FLAG_TO_CODE[val]
+        return code, val
+    code = val.upper()
+    if code in EU_FLAGS:
+        return code, EU_FLAGS[code]
+    return None, None
+
+async def verify_socket(host: str, port: int, sni: str = None, is_tls: bool = False, timeout: float = 1.6):
+    """Проверяет не просто TCP-порт, но и базовый TLS-отклик, если нода с TLS/Reality"""
     loop = asyncio.get_running_loop()
     start = time.perf_counter()
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setblocking(False)
         await asyncio.wait_for(loop.sock_connect(sock, (host, port)), timeout=timeout)
+        
+        # Если нода заявляет TLS/Reality, проверяем, отвечает ли сервер на TLS ClientHello
+        if is_tls and port in [443, 8443, 2053, 2083, 2087, 2096]:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            server_hostname = sni if sni else host
+            try:
+                await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: ctx.wrap_socket(sock, server_hostname=server_hostname)),
+                    timeout=1.2
+                )
+            except Exception:
+                # Если порт открыт, но TLS-сертификат/хэндшейк сброшен — нода мертва
+                sock.close()
+                return None
+
         sock.close()
-        return (time.perf_counter() - start) * 1000  # мс
+        return (time.perf_counter() - start) * 1000  # ms
     except Exception:
         return None
-
-def extract_country_info(raw_name: str):
-    match = COUNTRY_REGEX.search(raw_name)
-    if not match:
-        return None, None
-    found = match.group(0)
-    # Если найден эмодзи-флаг
-    if found in EU_FLAGS:
-        return EU_FLAGS[found], found
-    # Если найден текстовый код (DE, NL и т.д.)
-    code = found.upper()
-    for flag, c_code in EU_FLAGS.items():
-        if c_code == code:
-            return code, flag
-    return None, None
 
 async def main():
     raw_urls = []
@@ -92,97 +123,106 @@ async def main():
         except Exception:
             continue
 
-    # Парсим и удаляем дубликаты
     parsed_nodes = []
     seen = set()
     for u in raw_urls:
-        p = parse_vless(u)
-        if p:
-            key = (p["host"], p["port"])
+        node = parse_vless(u)
+        if node:
+            key = (node["host"], node["port"])
             if key not in seen:
                 seen.add(key)
-                parsed_nodes.append(p)
+                parsed_nodes.append(node)
 
-    # 1. Отбираем ноды, у которых в названии ЕСТЬ европейские флаги/коды
-    eu_candidates = []
-    other_candidates = []
-
+    # Приоритет Reality и современным протоколам над старым незашифрованным TCP
+    eu_nodes = []
     for node in parsed_nodes:
-        code, flag = extract_country_info(node["name"])
-        if code and flag:
-            node["country_code"] = code
+        code, flag = extract_country(node["name"])
+        if code:
+            node["country"] = code
             node["flag"] = flag
-            eu_candidates.append(node)
-        else:
-            other_candidates.append(node)
+            # Даем бонус Reality серверам
+            node["is_reality"] = (node["security"] == "reality")
+            eu_nodes.append(node)
 
-    # Пингуем кандидатов пачкой (до 150 европейских + 50 на резерв)
-    test_pool = eu_candidates[:150] + other_candidates[:50]
-    tasks = [check_tcp_ping(n["host"], n["port"]) for n in test_pool]
+    # Сначала проверяем ноды Reality, затем остальные
+    eu_nodes.sort(key=lambda x: not x["is_reality"])
+    pool_to_test = eu_nodes[:160]
+
+    # Параллельное тестирование сокетов с валидацией TLS
+    tasks = []
+    for n in pool_to_test:
+        is_tls = n["security"] in ["tls", "reality"]
+        sni = n["params"].get("sni") or n["params"].get("peer")
+        tasks.append(verify_socket(n["host"], n["port"], sni=sni, is_tls=is_tls))
+
     pings = await asyncio.gather(*tasks)
 
-    valid_nodes = []
-    for node, ping in zip(test_pool, pings):
-        if ping is not None and ping < 500:
+    alive_nodes = []
+    for node, ping in zip(pool_to_test, pings):
+        if ping is not None and ping < 450:
             node["ping"] = ping
-            valid_nodes.append(node)
+            alive_nodes.append(node)
 
-    # Сортируем строго от минимального пинга к большему
-    valid_nodes.sort(key=lambda x: x["ping"])
+    # Сортировка по задержке
+    alive_nodes.sort(key=lambda x: x["ping"])
 
-    final_links = []
-    fallback_links = []
-    country_counters = {}
+    # Балансировка стран: не больше 4 серверов от одной страны, чтобы не забивать всё Германией
+    MAX_PER_COUNTRY = 4
+    country_distribution = {}
+    selected_nodes = []
 
-    for node in valid_nodes:
-        query_str = urllib.parse.urlencode(node["params"])
-
-        if "country_code" in node:
-            code = node["country_code"]
-            flag = node["flag"]
-            count = country_counters.get(code, 0) + 1
-            country_counters[code] = count
-
-            new_title = f"{code} {flag} ouVPN #{count} ({int(node['ping'])}ms)"
-            encoded_title = urllib.parse.quote(new_title)
-            final_links.append(f"vless://{node['uuid']}@{node['host']}:{node['port']}?{query_str}#{encoded_title}")
-        else:
-            f_title = f"⚡ ouVPN Fast ({int(node['ping'])}ms)"
-            fallback_links.append(f"vless://{node['uuid']}@{node['host']}:{node['port']}?{query_str}#{urllib.parse.quote(f_title)}")
-
-        if len(final_links) >= 30:
+    for node in alive_nodes:
+        c = node["country"]
+        if country_distribution.get(c, 0) < MAX_PER_COUNTRY:
+            country_distribution[c] = country_distribution.get(c, 0) + 1
+            selected_nodes.append(node)
+        if len(selected_nodes) >= 28:
             break
 
-    # СТРАХОВКА: если чистых европейских серверов меньше 10, добираем из резервных быстрых
-    if len(final_links) < 10:
-        needed = 15 - len(final_links)
-        final_links.extend(fallback_links[:needed])
+    # Если лимит не набрался, добираем остальные выжившие
+    if len(selected_nodes) < 20:
+        for node in alive_nodes:
+            if node not in selected_nodes:
+                selected_nodes.append(node)
+            if len(selected_nodes) >= 25:
+                break
 
-    # Время по Москве (UTC+3)
+    # Формируем финальные VLESS ссылки с нумерацией
+    final_links = []
+    country_counters = {}
+    for node in selected_nodes:
+        c = node["country"]
+        flag = node["flag"]
+        cnt = country_counters.get(c, 0) + 1
+        country_counters[c] = cnt
+
+        type_tag = "Reality" if node.get("is_reality") else "VLESS"
+        new_title = f"{c} {flag} ouVPN #{cnt} [{type_tag}] ({int(node['ping'])}ms)"
+        encoded_title = urllib.parse.quote(new_title)
+
+        query_str = urllib.parse.urlencode(node["params"])
+        final_links.append(f"vless://{node['uuid']}@{node['host']}:{node['port']}?{query_str}#{encoded_title}")
+
+    # Время МСК (UTC+3)
     msk_tz = timezone(timedelta(hours=3))
     now_msk = datetime.now(msk_tz)
-    
     date_formatted = now_msk.strftime("%Y-%m-%d / %H:%M (Moscow)")
     announce_date = now_msk.strftime("%y.%m.%d - %H:%M МСК")
-    total_count = len(final_links)
 
-    # Метаданные шапки
+    # Обновленная шапка: удален userinfo со счетчиком байт, иконка заменена на корону
     header = [
-        "# profile-title: 🎒 𝗼𝘂𝗩𝗣𝗡",
+        "# profile-title: 👑 𝗼𝘂𝗩𝗣𝗡",
         "# profile-update-interval: 3",
-        "#subscription-userinfo: download=14293651161088; total=0;",
         f"# Date/Time: {date_formatted}",
-        f"# Количество: {total_count}",
+        f"# Количество: {len(final_links)}",
         "# profile-web-page-url: https://oulan1.github.io/ouVPN/",
         "# support-url: https://t.me/oulanGift",
         f"# announce: 🌐 Дата последнего обновления: {announce_date}",
         ""
     ]
 
-    full_content = "\n".join(header) + "\n" + "\n".join(final_links)
-
     with open("sub.txt", "w", encoding="utf-8") as f:
-        f.write(full_content)
+        f.write("\n".join(header) + "\n" + "\n".join(final_links))
 
 if __name__ == "__main__":
     asyncio.run(main())
