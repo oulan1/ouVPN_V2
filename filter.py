@@ -1,190 +1,143 @@
-import asyncio
 import base64
 from datetime import datetime, timezone, timedelta
 import re
-import socket
-import time
 import urllib.parse
 import urllib.request
 
-# Рабочие и свежие базы с обилием Reality
+# Твои проверенные источники под РФ
 SOURCES = [
-    "https://raw.githubusercontent.com/yebekhe/TelegramV2rayCollector/main/sub/base64/vless",
-    "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub1.txt",
-    "https://raw.githubusercontent.com/barry-far/V2ray-Configs/main/Sub2.txt",
-    "https://raw.githubusercontent.com/ndsphon/v2ray-collector/main/vless.txt",
-    "https://raw.githubusercontent.com/aiboboxx/v2rayfree/main/v2",
-    "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt"
+    "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS.txt",
+    "https://raw.githubusercontent.com/AvenCores/goida-vpn-configs/refs/heads/main/githubmirror/1.txt",
+    "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/refs/heads/main/configs/1.1.txt",
+    "https://raw.githubusercontent.com/pog7x/vpn-configs/refs/heads/master/githubmirror/1.txt",
+    "https://raw.githubusercontent.com/FLAT447/v2ray-lists/refs/heads/main/BLACK_FULL.txt"
 ]
 
-# Соответствие кодов, флагов и вариантов написания
-EU_MAP = {
-    "DE": ("🇩🇪", ["germany", "deutschland", "frankfurt", "falkenstein"]),
-    "NL": ("🇳🇱", ["netherlands", "holland", "amsterdam"]),
-    "FI": ("🇫🇮", ["finland", "helsinki"]),
-    "SE": ("🇸🇪", ["sweden", "stockholm"]),
-    "PL": ("🇵🇱", ["poland", "warsaw"]),
-    "FR": ("🇫🇷", ["france", "paris"]),
-    "GB": ("🇬🇧", ["united kingdom", "britain", "england", "london", "uk"]),
-    "AT": ("🇦🇹", ["austria", "vienna"]),
-    "CH": ("🇨🇭", ["switzerland", "zurich"]),
-    "CZ": ("🇨🇿", ["czech", "prague"]),
-    "NO": ("🇳🇴", ["norway", "oslo"]),
-    "IT": ("🇮🇹", ["italy", "milan", "rome"]),
-    "ES": ("🇪🇸", ["spain", "madrid"])
+# Карта стран, флагов и паттернов поиска
+COUNTRY_PATTERNS = {
+    "DE": ("🇩🇪", [r"germany", r"deutschland", r"frankfurt", r"falkenstein", r"\bde\b", r"🇩🇪"]),
+    "NL": ("🇳🇱", [r"netherlands", r"holland", r"amsterdam", r"\bnl\b", r"🇳🇱"]),
+    "FI": ("🇫🇮", [r"finland", r"helsinki", r"\bfi\b", r"🇫🇮"]),
+    "SE": ("🇸🇪", [r"sweden", r"stockholm", r"\bse\b", r"🇸🇪"]),
+    "PL": ("🇵🇱", [r"poland", r"warsaw", r"\bpl\b", r"🇵🇱"]),
+    "FR": ("🇫🇷", [r"france", r"paris", r"\bfr\b", r"🇫🇷"]),
+    "GB": ("🇬🇧", [r"united kingdom", r"london", r"\bgb\b", r"\buk\b", r"🇬🇧"]),
+    "AT": ("🇦🇹", [r"austria", r"vienna", r"\bat\b", r"🇦🇹"]),
+    "CH": ("🇨🇭", [r"switzerland", r"zurich", r"\bch\b", r"🇨🇭"]),
+    "US": ("🇺🇸", [r"united states", r"usa", r"\bus\b", r"🇺🇸"]),
+    "TR": ("🇹🇷", [r"turkey", r"istanbul", r"\btr\b", r"🇹🇷"]),
+    "KZ": ("🇰🇿", [r"kazakhstan", r"almaty", r"astana", r"\bkz\b", r"🇰🇿"])
 }
 
-def decode_sub(content: str) -> list[str]:
-    lines = []
+def decode_data(raw: str) -> list[str]:
     try:
-        decoded = base64.b64decode(content.strip()).decode("utf-8", errors="ignore")
-        lines = decoded.splitlines()
+        decoded = base64.b64decode(raw.strip()).decode("utf-8", errors="ignore")
+        return [line.strip() for line in decoded.splitlines() if line.strip().startswith("vless://")]
     except Exception:
-        lines = content.splitlines()
-    return [l.strip() for l in lines if l.startswith("vless://")]
+        return [line.strip() for line in raw.splitlines() if line.strip().startswith("vless://")]
 
-def parse_vless(url: str):
-    try:
-        parsed = urllib.parse.urlparse(url)
-        uuid = parsed.username
-        host, port = parsed.hostname, parsed.port
-        if not uuid or not host or not port:
-            return None
-            
-        params = dict(urllib.parse.parse_qsl(parsed.query))
-        raw_name = urllib.parse.unquote(parsed.fragment)
-        
-        # Отсекаем мертвый устаревший мусор с HTTP-заголовками
-        if params.get("headerType") == "http":
-            return None
-
-        security = params.get("security", "").lower()
-        is_reality = (security == "reality") or ("pbk" in params)
-
-        return {
-            "uuid": uuid,
-            "host": host,
-            "port": port,
-            "params": params,
-            "is_reality": is_reality,
-            "name": raw_name
-        }
-    except Exception:
-        return None
-
-def detect_country(name: str):
-    name_lower = name.lower()
-    for code, (flag, keywords) in EU_MAP.items():
-        # Поиск эмодзи флага
-        if flag in name:
-            return code, flag
-        # Поиск кода страны типа [DE] или отдельным словом DE
-        if re.search(rf"\b{code}\b", name, re.IGNORECASE):
-            return code, flag
-        # Поиск по городам и названиям (Frankfurt, Amsterdam...)
-        for kw in keywords:
-            if kw in name_lower:
+def detect_country(text: str):
+    t = text.lower()
+    for code, (flag, patterns) in COUNTRY_PATTERNS.items():
+        for p in patterns:
+            if re.search(p, t):
                 return code, flag
-    return None, None
+    return "EU", "🌐"
 
-async def check_tcp(host: str, port: int, timeout: float = 1.2):
-    loop = asyncio.get_running_loop()
-    start = time.perf_counter()
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setblocking(False)
-        await asyncio.wait_for(loop.sock_connect(sock, (host, port)), timeout=timeout)
-        sock.close()
-        return (time.perf_counter() - start) * 1000  # ms
-    except Exception:
-        return None
-
-async def main():
-    raw_urls = []
-    for src in SOURCES:
+def main():
+    collected_urls = []
+    
+    # 1. Скачиваем ссылки из твоих источников
+    for url in SOURCES:
         try:
-            req = urllib.request.Request(src, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=4) as res:
-                raw_urls.extend(decode_sub(res.read().decode("utf-8", errors="ignore")))
+            req = urllib.request.Request(
+                url, 
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                content = resp.read().decode("utf-8", errors="ignore")
+                collected_urls.extend(decode_data(content))
         except Exception:
             continue
 
-    parsed_nodes = []
+    reality_nodes = []
     seen = set()
-    for u in raw_urls:
-        node = parse_vless(u)
-        if node:
-            key = (node["host"], node["port"])
-            if key not in seen:
-                seen.add(key)
-                parsed_nodes.append(node)
 
-    # Разделяем на кандидатов с определенной страной и общие Reality
-    eu_pool = []
-    fallback_pool = []
+    # 2. Фильтруем строго рабочие Reality конфиги
+    for raw_url in collected_urls:
+        try:
+            parsed = urllib.parse.urlparse(raw_url)
+            uuid = parsed.username
+            host, port = parsed.hostname, parsed.port
+            if not uuid or not host or not port:
+                continue
 
-    for node in parsed_nodes:
-        code, flag = detect_country(node["name"])
-        if code:
-            node["country"] = code
-            node["flag"] = flag
-            eu_pool.append(node)
-        elif node["is_reality"]:
-            fallback_pool.append(node)
+            params = dict(urllib.parse.parse_qsl(parsed.query))
+            
+            # Строгий отбор: только Reality с публичным ключом и SNI
+            security = params.get("security", "").lower()
+            pbk = params.get("pbk")
+            sni = params.get("sni") or params.get("peer")
+            
+            if security != "reality" and not pbk:
+                continue
+            if not pbk or not sni:
+                continue
 
-    # Приоритет Reality внутри европейских
-    eu_pool.sort(key=lambda x: not x["is_reality"])
-    
-    # Берем пачку до 150 европейских + 50 на запас
-    test_batch = eu_pool[:150] + fallback_pool[:50]
-    tasks = [check_tcp(n["host"], n["port"]) for n in test_batch]
-    pings = await asyncio.gather(*tasks)
+            # Исключаем дубли
+            key = (host, port, uuid)
+            if key in seen:
+                continue
+            seen.add(key)
 
-    alive = []
-    for node, ping in zip(test_batch, pings):
-        if ping is not None and ping < 450:
-            node["ping"] = ping
-            alive.append(node)
+            raw_name = urllib.parse.unquote(parsed.fragment)
+            country_code, flag = detect_country(raw_name + " " + host)
 
-    # Сортировка по задержке
-    alive.sort(key=lambda x: x["ping"])
+            reality_nodes.append({
+                "uuid": uuid,
+                "host": host,
+                "port": port,
+                "params": params,
+                "code": country_code,
+                "flag": flag
+            })
+        except Exception:
+            continue
 
-    final_nodes = []
+    # 3. Балансировка: не больше 5 нод на одну страну
     country_counts = {}
-    MAX_PER_COUNTRY = 5  # Не больше 5 штук на страну
+    balanced_nodes = []
+    extra_nodes = []
 
-    # Сначала набираем сбалансированную Европу
-    for node in alive:
-        if "country" in node:
-            c = node["country"]
-            if country_counts.get(c, 0) < MAX_PER_COUNTRY:
-                country_counts[c] = country_counts.get(c, 0) + 1
-                final_nodes.append(node)
-        if len(final_nodes) >= 25:
-            break
+    for node in reality_nodes:
+        c = node["code"]
+        count = country_counts.get(c, 0)
+        if count < 5:
+            country_counts[c] = count + 1
+            balanced_nodes.append(node)
+        else:
+            extra_nodes.append(node)
 
-    # Если набралось меньше 15 серверов, добираем любые живые выжившие
-    if len(final_nodes) < 15:
-        for node in alive:
-            if node not in final_nodes:
-                final_nodes.append(node)
-            if len(final_nodes) >= 20:
-                break
+    # Если европейских набралось меньше 25, добираем из запаса
+    if len(balanced_nodes) < 25:
+        balanced_nodes.extend(extra_nodes[: (25 - len(balanced_nodes))])
 
-    # Сборка ссылок
+    # Итоговый лимит 30 серверов
+    final_nodes = balanced_nodes[:30]
+
+    # 4. Сборка ссылок с нумерацией
     final_links = []
-    counters = {}
+    node_counters = {}
     for node in final_nodes:
-        c = node.get("country", "EU")
-        flag = node.get("flag", "⚡")
-        cnt = counters.get(c, 0) + 1
-        counters[c] = cnt
+        c = node["code"]
+        flag = node["flag"]
+        idx = node_counters.get(c, 0) + 1
+        node_counters[c] = idx
 
-        type_tag = "Reality" if node["is_reality"] else "VLESS"
-        new_title = f"{c} {flag} ouVPN #{cnt} [{type_tag}] ({int(node['ping'])}ms)"
+        new_title = f"{c} {flag} ouVPN #{idx} [Reality]"
         encoded_title = urllib.parse.quote(new_title)
-
         query_str = urllib.parse.urlencode(node["params"])
+        
         final_links.append(f"vless://{node['uuid']}@{node['host']}:{node['port']}?{query_str}#{encoded_title}")
 
     # Москва UTC+3
@@ -193,6 +146,7 @@ async def main():
     date_formatted = now_msk.strftime("%Y-%m-%d / %H:%M (Moscow)")
     announce_date = now_msk.strftime("%y.%m.%d - %H:%M МСК")
 
+    # Шапка без счетчиков байт и с короной
     header = [
         "# profile-title: 👑 𝗼𝘂𝗩𝗣𝗡",
         "# profile-update-interval: 3",
@@ -208,4 +162,4 @@ async def main():
         f.write("\n".join(header) + "\n" + "\n".join(final_links))
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
