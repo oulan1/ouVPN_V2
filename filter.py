@@ -26,34 +26,71 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
-# Sources with high-quality, frequently updated VLESS Reality configs
+# ==============================================================================
+# 1. ОБЫЧНЫЕ ИСТОЧНИКИ СЕРВЕРОВ (Общий поиск)
+# ==============================================================================
 SOURCES = [
     "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS.txt",
     "https://raw.githubusercontent.com/Hidashimora/free-vpn-anti-rkn/refs/heads/main/configs/1.1.txt",
-    "https://raw.githubusercontent.com/pog7x/vpn-configs/refs/heads/master/githubmirror/1.txt",
     "https://raw.githubusercontent.com/FLAT447/v2ray-lists/refs/heads/main/BLACK_FULL.txt",
+    "https://raw.githubusercontent.com/pog7x/vpn-configs/refs/heads/master/githubmirror/1.txt",
     "https://raw.githubusercontent.com/Leon406/SubCrawler/main/sub/share/vless",
     "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub"
 ]
 
+# ==============================================================================
+# 2. БЕЛЫЙ СПИСОК / ОБХОД БЛОКИРОВОК (Отдельный массив)
+# Серверы отсюда будут иметь высший приоритет и называться "Обход №1", "Обход №2" и т.д.
+# ==============================================================================
+# Сюда можно добавлять ссылки на подписки/списки для белого списка:
+WHITELIST_SOURCES = [
+    # Например:
+    "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/Vless-Reality-White-Lists-Rus-Mobile.txt"
+]
+
+# Сюда можно напрямую вставлять готовые vless:// ключи для белого списка:
+WHITELIST_SERVERS = [
+    # Например:
+    # "vless://uuid@ip:port?security=reality&pbk=...#MyNode",
+]
+
+# ==============================================================================
+# СТРАНЫ И ЕВРОПЕЙСКИЙ ПРИОРИТЕТ
+# ==============================================================================
+EUROPEAN_COUNTRIES = {
+    "DE", "NL", "FI", "SE", "PL", "FR", "GB", "AT", "CH", "CZ",
+    "EE", "LV", "LT", "NO", "DK", "IT", "ES", "RO", "BG", "MD",
+    "BE", "IE", "IS", "RS", "UA", "TR", "KZ"
+}
+
 COUNTRY_PATTERNS = {
-    "DE": ("🇩🇪", [r"germany", r"deutschland", r"frankfurt", r"falkenstein", r"\bde\b", r"🇩🇪"]),
+    "DE": ("🇩🇪", [r"germany", r"deutschland", r"frankfurt", r"falkenstein", r"berlin", r"\bde\b", r"🇩🇪"]),
     "NL": ("🇳🇱", [r"netherlands", r"holland", r"amsterdam", r"\bnl\b", r"🇳🇱"]),
     "FI": ("🇫🇮", [r"finland", r"helsinki", r"\bfi\b", r"🇫🇮"]),
     "SE": ("🇸🇪", [r"sweden", r"stockholm", r"\bse\b", r"🇸🇪"]),
     "PL": ("🇵🇱", [r"poland", r"warsaw", r"\bpl\b", r"🇵🇱"]),
     "FR": ("🇫🇷", [r"france", r"paris", r"\bfr\b", r"🇫🇷"]),
-    "GB": ("🇬🇧", [r"united kingdom", r"london", r"\bgb\b", r"\buk\b", r"🇬🇧"]),
+    "GB": ("🇬🇧", [r"united kingdom", r"london", r"great britain", r"\bgb\b", r"\buk\b", r"🇬🇧"]),
     "AT": ("🇦🇹", [r"austria", r"vienna", r"\bat\b", r"🇦🇹"]),
     "CH": ("🇨🇭", [r"switzerland", r"zurich", r"\bch\b", r"🇨🇭"]),
-    "US": ("🇺🇸", [r"united states", r"usa", r"\bus\b", r"🇺🇸"]),
-    "TR": ("🇹🇷", [r"turkey", r"istanbul", r"\btr\b", r"🇹🇷"]),
-    "KZ": ("🇰🇿", [r"kazakhstan", r"almaty", r"astana", r"\bkz\b", r"🇰🇿"]),
-    "SG": ("🇸🇬", [r"singapore", r"\bsg\b", r"🇸🇬"]),
-    "JP": ("🇯🇵", [r"japan", r"tokyo", r"\bjp\b", r"🇯🇵"]),
+    "CZ": ("🇨🇿", [r"czech", r"prague", r"\bcz\b", r"🇨🇿"]),
     "EE": ("🇪🇪", [r"estonia", r"tallinn", r"\bee\b", r"🇪🇪"]),
     "LV": ("🇱🇻", [r"latvia", r"riga", r"\blv\b", r"🇱🇻"]),
-    "LT": ("🇱🇹", [r"lithuania", r"vilnius", r"\blt\b", r"🇱🇹"])
+    "LT": ("🇱🇹", [r"lithuania", r"vilnius", r"\blt\b", r"🇱🇹"]),
+    "NO": ("🇳🇴", [r"norway", r"oslo", r"\bno\b", r"🇳🇴"]),
+    "DK": ("🇩🇰", [r"denmark", r"copenhagen", r"\bdk\b", r"🇩🇰"]),
+    "IT": ("🇮🇹", [r"italy", r"milan", r"rome", r"\bit\b", r"🇮🇹"]),
+    "ES": ("🇪🇸", [r"spain", r"madrid", r"barcelona", r"\bes\b", r"🇪🇸"]),
+    "MD": ("🇲🇩", [r"moldova", r"chisinau", r"\bmd\b", r"🇲🇩"]),
+    "RO": ("🇷🇴", [r"romania", r"bucharest", r"\bro\b", r"🇷🇴"]),
+    "BG": ("🇧🇬", [r"bulgaria", r"sofia", r"\bbg\b", r"🇧🇬"]),
+    "TR": ("🇹🇷", [r"turkey", r"istanbul", r"\btr\b", r"🇹🇷"]),
+    "KZ": ("🇰🇿", [r"kazakhstan", r"almaty", r"astana", r"\bkz\b", r"🇰🇿"]),
+    "UA": ("🇺🇦", [r"ukraine", r"kyiv", r"\bua\b", r"🇺🇦"]),
+    "US": ("🇺🇸", [r"united states", r"usa", r"new york", r"los angeles", r"\bus\b", r"🇺🇸"]),
+    "SG": ("🇸🇬", [r"singapore", r"\bsg\b", r"🇸🇬"]),
+    "JP": ("🇯🇵", [r"japan", r"tokyo", r"\bjp\b", r"🇯🇵"]),
+    "RU": ("🇷🇺", [r"russia", r"moscow", r"saint petersburg", r"\bru\b", r"🇷🇺"])
 }
 
 def country_code_to_flag(code: str) -> str:
@@ -120,7 +157,7 @@ def detect_country_by_pattern(text: str) -> tuple[str, str]:
                 return code, flag
     return "EU", "⚡"
 
-def parse_vless(url: str):
+def parse_vless(url: str, is_whitelist: bool = False):
     try:
         p = urllib.parse.urlparse(url)
         uuid = p.username
@@ -132,6 +169,12 @@ def parse_vless(url: str):
         security = params.get("security", "").lower()
         if not pbk and security != "reality":
             return None
+            
+        net = params.get("type", "tcp").lower()
+        # Исключаем экспериментальные транспорты, которые НЕ поддерживаются мобильными клиентами (Happ и др.)
+        if net in ("xhttp", "splithttp", "raw", "httpupgrade"):
+            return None
+            
         if params.get("headerType") == "http":
             return None
 
@@ -141,7 +184,8 @@ def parse_vless(url: str):
             "port": int(port),
             "params": params,
             "name": urllib.parse.unquote(p.fragment),
-            "raw": url
+            "raw": url,
+            "is_whitelist": is_whitelist
         }
     except Exception:
         return None
@@ -180,19 +224,6 @@ def build_xray_outbound(tag: str, node: dict) -> dict:
             "path": params.get("path", "/"),
             "headers": {"Host": params.get("host", params.get("sni", node["host"]))}
         }
-    elif net in ("xhttp", "splithttp"):
-        stream["network"] = "xhttp"
-        stream["xhttpSettings"] = {
-            "path": params.get("path", "/"),
-            "host": params.get("host", params.get("sni", node["host"])),
-            "mode": params.get("mode", "auto")
-        }
-    elif net == "httpupgrade":
-        stream["network"] = "httpupgrade"
-        stream["httpupgradeSettings"] = {
-            "path": params.get("path", "/"),
-            "host": params.get("host", params.get("sni", node["host"]))
-        }
 
     user: dict = {
         "id": node["uuid"],
@@ -215,7 +246,7 @@ def build_xray_outbound(tag: str, node: dict) -> dict:
     }
 
 async def check_tcp_ping(host: str, port: int, sem: asyncio.Semaphore, timeout: float = 0.8):
-    """Fast preliminary check to discard offline / DNS-failed hosts."""
+    """Быстрый предфильтр: отсекает выключенные и недоступные адреса."""
     async with sem:
         loop = asyncio.get_running_loop()
         start = time.perf_counter()
@@ -228,10 +259,10 @@ async def check_tcp_ping(host: str, port: int, sem: asyncio.Semaphore, timeout: 
         except Exception:
             return None
 
-async def check_http_proxy(port: int, timeout: float = 3.0) -> int | None:
+async def check_http_proxy(port: int, timeout: float = 3.2) -> int | None:
     """
-    Sends an actual HTTP GET request through the local Xray proxy inbound.
-    Verifies that the proxy can perform the Reality handshake and reach the Internet.
+    Отправляет настоящий HTTP GET запрос к www.gstatic.com/generate_204 через локальный Xray-прокси.
+    В точности соответствует проверке 'via proxy GET', которую выполняет клиент Happ.
     """
     start = time.perf_counter()
     try:
@@ -240,9 +271,9 @@ async def check_http_proxy(port: int, timeout: float = 3.0) -> int | None:
             timeout=timeout
         )
         req = (
-            b"GET http://cp.cloudflare.com/generate_204 HTTP/1.1\r\n"
-            b"Host: cp.cloudflare.com\r\n"
-            b"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)\r\n"
+            b"GET http://www.gstatic.com/generate_204 HTTP/1.1\r\n"
+            b"Host: www.gstatic.com\r\n"
+            b"User-Agent: Happ/3.0 (Android; ProxyCheck)\r\n"
             b"Connection: close\r\n\r\n"
         )
         writer.write(req)
@@ -257,13 +288,12 @@ async def check_http_proxy(port: int, timeout: float = 3.0) -> int | None:
     except Exception:
         return None
 
-async def test_nodes_real_internet(xray_exe: str, candidate_nodes: list[dict], batch_size: int = 35) -> list[dict]:
+async def test_nodes_real_internet(xray_exe: str, candidate_nodes: list[dict], batch_size: int = 40, target_count: int = 35) -> list[dict]:
     """
-    Tests candidates in parallel batches using Xray.
-    Returns nodes that successfully route traffic to the Internet, with real latency.
+    Тестирует кандидатов параллельными пачками через Xray с проверкой www.gstatic.com/generate_204.
     """
     verified_nodes = []
-    base_port = 15000
+    base_port = 17000
 
     for batch_idx in range(0, len(candidate_nodes), batch_size):
         batch = candidate_nodes[batch_idx : batch_idx + batch_size]
@@ -308,7 +338,7 @@ async def test_nodes_real_internet(xray_exe: str, candidate_nodes: list[dict], b
         await asyncio.sleep(0.8)
 
         try:
-            tasks = [check_http_proxy(base_port + i, timeout=3.0) for i in range(len(batch))]
+            tasks = [check_http_proxy(base_port + i, timeout=3.2) for i in range(len(batch))]
             results = await asyncio.gather(*tasks)
 
             for i, latency in enumerate(results):
@@ -316,7 +346,8 @@ async def test_nodes_real_internet(xray_exe: str, candidate_nodes: list[dict], b
                     node = batch[i]
                     node["latency"] = latency
                     verified_nodes.append(node)
-                    print(f"  [+] REAL Internet OK: {latency:4d}ms -> {node['host']}:{node['port']}")
+                    tag = "ОБХОД" if node.get("is_whitelist") else "OK"
+                    print(f"  [+] [{tag}] {latency:4d}ms -> {node['host']}:{node['port']}")
 
         finally:
             proc.terminate()
@@ -330,18 +361,17 @@ async def test_nodes_real_internet(xray_exe: str, candidate_nodes: list[dict], b
                 except Exception:
                     pass
 
-        # Stop early if we have collected enough verified servers
-        if len(verified_nodes) >= 35:
+        # Если набрали нужное количество рабочих серверов — завершаем раньше
+        if len(verified_nodes) >= target_count:
             break
 
     return verified_nodes
 
 def enrich_countries_geoip(nodes: list[dict]):
-    """Resolves ISO country codes for verified nodes in a single batch request."""
+    """Пакетное определение точных ISO-кодов стран через ip-api.com."""
     ip_to_nodes: dict[str, list[dict]] = {}
     for n in nodes:
         host = n["host"]
-        # Check if host is an IP
         try:
             socket.inet_aton(host)
             ip = host
@@ -379,7 +409,6 @@ def enrich_countries_geoip(nodes: list[dict]):
         except Exception:
             pass
 
-    # Ensure all nodes have code and flag
     for n in nodes:
         if "code" not in n or not n["code"]:
             c, flag = detect_country_by_pattern(n["name"] + " " + n["host"])
@@ -388,12 +417,41 @@ def enrich_countries_geoip(nodes: list[dict]):
 
 async def main():
     print("=" * 60)
-    print("[*] ouVPN_V2: Real Internet Connectivity Filter")
+    print("[*] ouVPN_V2: Happ via-proxy-GET (gstatic) & Europe Filter")
     print("=" * 60)
 
     xray_exe = ensure_xray()
 
-    print("[*] Downloading configurations from sources...")
+    # --------------------------------------------------------------------------
+    # 1. Загрузка белых списков (Whitelist / Обход)
+    # --------------------------------------------------------------------------
+    print("\n[*] Загрузка белых списков (Обход)...")
+    whitelist_raw_urls = list(WHITELIST_SERVERS)
+    for url in WHITELIST_SOURCES:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                content = resp.read().decode("utf-8", errors="ignore")
+                decoded = decode_data(content)
+                whitelist_raw_urls.extend(decoded)
+                print(f"  + Белый список: {len(decoded)} ссылок из {url[:50]}...")
+        except Exception as e:
+            print(f"  - Не удалось загрузить белый список {url[:50]} ({e})")
+
+    whitelist_nodes = []
+    seen_wl = set()
+    for raw in whitelist_raw_urls:
+        n = parse_vless(raw, is_whitelist=True)
+        if n:
+            k = (n["host"], n["port"], n["uuid"])
+            if k not in seen_wl:
+                seen_wl.add(k)
+                whitelist_nodes.append(n)
+
+    # --------------------------------------------------------------------------
+    # 2. Загрузка основных источников
+    # --------------------------------------------------------------------------
+    print("\n[*] Загрузка основных конфигураций...")
     collected_urls = []
     for url in SOURCES:
         try:
@@ -405,26 +463,40 @@ async def main():
                 content = resp.read().decode("utf-8", errors="ignore")
                 decoded = decode_data(content)
                 collected_urls.extend(decoded)
-                print(f"  + Loaded {len(decoded):4d} configs from {url[:50]}...")
+                print(f"  + Загружено {len(decoded):4d} нод из {url[:50]}...")
         except Exception as e:
-            print(f"  - Failed {url[:50]} ({e})")
+            print(f"  - Ошибка {url[:50]} ({e})")
 
-    # Deduplicate and validate
     parsed_nodes = []
-    seen = set()
+    seen = set(seen_wl)
     for raw_url in collected_urls:
-        node = parse_vless(raw_url)
+        node = parse_vless(raw_url, is_whitelist=False)
         if node:
             key = (node["host"], node["port"], node["uuid"])
             if key not in seen:
                 seen.add(key)
                 parsed_nodes.append(node)
 
-    print(f"\n[*] Unique valid VLESS candidates: {len(parsed_nodes)}")
+    print(f"\n[*] Найдено совместимых VLESS кандидатов: {len(parsed_nodes)}")
 
-    # Stage 1: Fast TCP Ping Pre-Filter (prunes offline / dead hosts in ~2s)
-    print("[*] Stage 1: Fast TCP Ping Pre-Filter...")
+    # --------------------------------------------------------------------------
+    # 3. Этап 1: Быстрый TCP пинг предфильтр
+    # --------------------------------------------------------------------------
+    print("[*] Этап 1: Быстрый TCP предфильтр...")
     sem = asyncio.Semaphore(150)
+    
+    # Сначала проверяем ноды белого списка (если есть)
+    wl_alive = []
+    if whitelist_nodes:
+        tasks_wl = [check_tcp_ping(n["host"], n["port"], sem) for n in whitelist_nodes]
+        pings_wl = await asyncio.gather(*tasks_wl)
+        for n, p in zip(whitelist_nodes, pings_wl):
+            if p is not None:
+                n["tcp_ping"] = p
+                wl_alive.append(n)
+        print(f"[+] Белый список (TCP-alive): {len(wl_alive)} из {len(whitelist_nodes)}")
+
+    # Проверяем основной пул (до 1500 нод)
     test_pool = parsed_nodes[:1500]
     tasks = [check_tcp_ping(n["host"], n["port"], sem) for n in test_pool]
     pings = await asyncio.gather(*tasks)
@@ -439,18 +511,29 @@ async def main():
             tcp_alive.append(node)
 
     tcp_alive.sort(key=lambda x: x["tcp_ping"])
-    print(f"[+] TCP-alive servers: {len(tcp_alive)} of {len(test_pool)}")
+    print(f"[+] Основных серверов на связи по TCP: {len(tcp_alive)} из {len(test_pool)}")
 
-    # Candidate selection with country diversity for testing
-    by_country: dict[str, list[dict]] = {}
-    for n in tcp_alive:
-        by_country.setdefault(n["code"], []).append(n)
+    # --------------------------------------------------------------------------
+    # 4. Формирование пула для Xray с ПРИОРИТЕТОМ ЕВРОПЫ
+    # --------------------------------------------------------------------------
+    eu_pool = [n for n in tcp_alive if n["code"] in EUROPEAN_COUNTRIES or n["code"] == "EU"]
+    other_pool = [n for n in tcp_alive if n not in eu_pool]
+
+    # Группируем Европу по странам для балансировки
+    eu_by_country: dict[str, list[dict]] = {}
+    for n in eu_pool:
+        eu_by_country.setdefault(n["code"], []).append(n)
 
     diverse_candidates = []
+    
+    # 1. Сначала добавляем живые ноды белого списка
+    diverse_candidates.extend(wl_alive)
+
+    # 2. Затем европейские ноды методом round-robin
     round_idx = 0
-    while len(diverse_candidates) < min(260, len(tcp_alive)):
+    while len(diverse_candidates) < 220:
         added = False
-        for c, nodes_list in by_country.items():
+        for c, nodes_list in eu_by_country.items():
             if round_idx < len(nodes_list):
                 diverse_candidates.append(nodes_list[round_idx])
                 added = True
@@ -458,51 +541,99 @@ async def main():
             break
         round_idx += 1
 
-    # Stage 2: REAL HTTP Internet Access Test via Xray
-    print(f"\n[*] Stage 2: REAL Internet Access Test via Xray ({len(diverse_candidates)} candidates)...")
-    verified_nodes = await test_nodes_real_internet(xray_exe, diverse_candidates, batch_size=40)
-    print(f"[+] Verified servers with confirmed Internet access: {len(verified_nodes)}")
+    # 3. Если европейских кандидатов меньше 220 — добираем остальные
+    if len(diverse_candidates) < 250:
+        for n in other_pool:
+            if n not in diverse_candidates:
+                diverse_candidates.append(n)
+            if len(diverse_candidates) >= 250:
+                break
+
+    # --------------------------------------------------------------------------
+    # 5. Этап 2: Настоящий HTTP тест выхода в интернет (www.gstatic.com/generate_204)
+    # --------------------------------------------------------------------------
+    print(f"\n[*] Этап 2: Тест выхода в интернет via proxy GET (gstatic) на {len(diverse_candidates)} кандидатах...")
+    verified_nodes = await test_nodes_real_internet(xray_exe, diverse_candidates, batch_size=40, target_count=35)
+    print(f"[+] Подтверждено рабочих серверов с реальным интернетом: {len(verified_nodes)}")
 
     if not verified_nodes:
-        print("[!] Warning: No servers passed real Internet check! Fallback to lowest TCP alive.")
+        print("[!] Внимание: ни один сервер не ответил на gstatic! Берем лучший TCP fallback.")
         verified_nodes = tcp_alive[:25]
         for n in verified_nodes:
             n["latency"] = n.get("tcp_ping", 999)
 
-    # Stage 3: Precise GeoIP Lookup
-    print("[*] Stage 3: Resolving exact server countries...")
+    # --------------------------------------------------------------------------
+    # 6. Определение реальных стран по GeoIP
+    # --------------------------------------------------------------------------
+    print("[*] Этап 3: Точное определение стран через GeoIP...")
     enrich_countries_geoip(verified_nodes)
 
-    # Stage 4: Selection by lowest REAL latency with country diversity
-    verified_nodes.sort(key=lambda x: x["latency"])
+    # --------------------------------------------------------------------------
+    # 7. Отбор и компоновка подписки:
+    #    - Сначала все рабочие серверы "Обход №..." из белого списка
+    #    - Затем Европа (DE, NL, FI, FR, SE, PL и т.д.) по наименьшему пингу
+    #    - Добор из остальных стран только если Европы не хватило до 25
+    # --------------------------------------------------------------------------
+    verified_whitelist = [n for n in verified_nodes if n.get("is_whitelist")]
+    verified_regular = [n for n in verified_nodes if not n.get("is_whitelist")]
 
-    TARGET_COUNT = 25
+    # Сортируем обе группы по реальной задержке gstatic
+    verified_whitelist.sort(key=lambda x: x["latency"])
+    verified_regular.sort(key=lambda x: x["latency"])
+
+    # Разделяем обычные на Европу и Не-Европу
+    eu_verified = [n for n in verified_regular if n["code"] in EUROPEAN_COUNTRIES or n["code"] == "EU"]
+    other_verified = [n for n in verified_regular if n not in eu_verified]
+
+    TARGET_REGULAR = max(20, 25 - len(verified_whitelist))
     MAX_PER_COUNTRY = 4
-    selected_nodes = []
+    selected_regular = []
     country_counts: dict[str, int] = {}
 
-    for node in verified_nodes:
+    # Сначала набираем ЕВРОПУ с балансировкой стран
+    for node in eu_verified:
         c = node["code"]
         if country_counts.get(c, 0) < MAX_PER_COUNTRY:
             country_counts[c] = country_counts.get(c, 0) + 1
-            selected_nodes.append(node)
-        if len(selected_nodes) >= TARGET_COUNT:
+            selected_regular.append(node)
+        if len(selected_regular) >= TARGET_REGULAR:
             break
 
-    # If still below target count, backfill with remaining verified nodes
-    if len(selected_nodes) < TARGET_COUNT:
-        for node in verified_nodes:
-            if node not in selected_nodes:
-                selected_nodes.append(node)
-            if len(selected_nodes) >= TARGET_COUNT:
+    # Если Европы с ограничением не хватило — добираем оставшуюся Европу
+    if len(selected_regular) < TARGET_REGULAR:
+        for node in eu_verified:
+            if node not in selected_regular:
+                selected_regular.append(node)
+            if len(selected_regular) >= TARGET_REGULAR:
                 break
 
-    # Final sort by latency
-    selected_nodes.sort(key=lambda x: x["latency"])
+    # И только если всей Европы не хватило до лимита — берем другие быстрые страны
+    if len(selected_regular) < TARGET_REGULAR:
+        for node in other_verified:
+            if node not in selected_regular:
+                c = node["code"]
+                if country_counts.get(c, 0) < 2:  # не-европейские не более 1-2 на страну
+                    country_counts[c] = country_counts.get(c, 0) + 1
+                    selected_regular.append(node)
+            if len(selected_regular) >= TARGET_REGULAR:
+                break
 
+    # Итоговая сортировка обычных серверов по задержке
+    selected_regular.sort(key=lambda x: x["latency"])
+
+    # Формируем итоговый список ссылок
     final_links = []
+
+    # 1. Добавляем серверы белого списка: "Обход №1", "Обход №2" ...
+    for idx, node in enumerate(verified_whitelist, start=1):
+        title = f"Обход №{idx} ({int(node['latency'])}ms)"
+        encoded_title = urllib.parse.quote(title)
+        query_str = urllib.parse.urlencode(node["params"])
+        final_links.append(f"vless://{node['uuid']}@{node['host']}:{node['port']}?{query_str}#{encoded_title}")
+
+    # 2. Добавляем регулярные европейские серверы: "DE 🇩🇪 ouVPN #1 (120ms)"
     node_counters: dict[str, int] = {}
-    for node in selected_nodes:
+    for node in selected_regular:
         c = node["code"]
         flag = node["flag"]
         idx = node_counters.get(c, 0) + 1
@@ -536,7 +667,10 @@ async def main():
     with open(sub_path, "w", encoding="utf-8") as f:
         f.write(sub_content)
 
-    print(f"\n[SUCCESS] Done! Saved {len(final_links)} fast, confirmed WORKING servers to sub.txt")
+    print(f"\n[SUCCESS] Готово! Сохранено {len(final_links)} проверенных через gstatic серверов в sub.txt")
+    if verified_whitelist:
+        print(f"  * Серверов обхода (Whitelist): {len(verified_whitelist)}")
+    print(f"  * Обычных серверов (в приоритете Европа): {len(selected_regular)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
