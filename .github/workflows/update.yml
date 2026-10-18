@@ -1,0 +1,40 @@
+name: Update ouVPN Subscription
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Xray-core
+        run: |
+          mkdir -p bin
+          curl -sL https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip -o xray.zip
+          unzip -q -o xray.zip xray -d ./bin
+          chmod +x ./bin/xray
+          rm xray.zip
+
+      - name: Run collector & Real Internet HTTP filter
+        run: python filter.py
+
+      - name: Commit and Push sub.txt
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add sub.txt
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update ouVPN fast working nodes [skip ci]" && git push)

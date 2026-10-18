@@ -1,0 +1,14 @@
+# Xray binaries
+bin/
+*.exe
+*.zip
+*.log
+
+# Temp files
+tmp_*.json
+test_*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
